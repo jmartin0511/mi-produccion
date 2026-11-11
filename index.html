@@ -215,6 +215,14 @@ textarea.in{min-height:90px;padding:12px;font-size:16px;font-family:ui-monospace
 .datebar.past .lbl,.datebar.past .dayinfo{color:var(--warn-ink)}
 .dtoday{font-weight:800;color:var(--orange-text);min-height:36px;padding:0 6px;flex:none}
 .dnote{background:var(--warn-bg);color:var(--warn-ink);border-radius:10px;padding:8px 10px;margin-bottom:8px;font-size:13px;font-weight:700}
+.goal .bar.done i{background:var(--bar)}
+.extra{margin-top:10px;background:var(--chip);border-radius:12px;padding:10px 12px;display:flex;justify-content:space-between;gap:4px 10px;flex-wrap:wrap;font-size:13px;color:var(--head)}
+.extra span{font-weight:800;color:var(--orange-text)}
+.qty{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;padding:8px 8px 8px 14px;background:var(--chip);border-radius:14px}
+.qty .ql{font-weight:800;color:var(--head);font-size:14px;line-height:1.25}
+.stepper{display:flex;align-items:center;gap:6px;flex:none}
+.stepper button{width:48px;height:48px;border-radius:12px;background:var(--surface);color:var(--head);font-size:26px;font-weight:800;line-height:1;box-shadow:var(--shadow)}
+.stepper b{min-width:40px;text-align:center;font-size:22px;color:var(--head)}
 #toast{position:fixed;width:max-content;left:50%;top:calc(env(safe-area-inset-top,0px) + 10px);transform:translate(-50%,-140%);z-index:60;background:var(--toast);color:#fff;border-radius:14px;padding:10px 12px 10px 16px;display:flex;align-items:center;gap:12px;font-weight:700;font-size:14px;max-width:calc(100% - 32px);box-shadow:0 10px 30px rgba(0,0,0,.3);transition:transform .25s ease}
 #toast.on{transform:translate(-50%,0)}
 #toast button{color:var(--orange);font-weight:800;min-height:36px;padding:0 6px}
@@ -243,9 +251,9 @@ svg.i{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-l
 <script>
 /* ===== Datos base ===== */
 const KEY='mi-produccion-estado-v1';
-const APP_VERSION='1.1';
+const APP_VERSION='1.2';
 const DEFAULT_RATES=[['Enmuflado Valplast',160],['Enmuflado Acrílico',140],['Enmuflado Impak',190],['Montaje dientes 1 a 3',180],['Montaje dientes 3 a 7',320],['Montaje dientes 8 a fin',440],['Plancha IOI',200],['FRI',25],['Plancha normal',100],['Cubeta',100]]
-  .map(([name,pts],i)=>({id:'t'+(i+1),name,pts,active:true})); // pts en décimas de punto (2,5 puntos = 25)
+  .map(([name,pts],i)=>({id:'t'+(i+1),name,pts,active:true,unit:name==='FRI'?'implante':''})); // pts en décimas de punto (2,5 puntos = 25)
 const MES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const MESC=MES.map(m=>m.slice(0,3));
 
@@ -279,6 +287,7 @@ const isIOS=()=>/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platfor
 const installText=()=>isIOS()
   ?'En iPhone: abre esta página en Safari, pulsa el botón Compartir y elige “Añadir a pantalla de inicio”. Así se abre a pantalla completa y tus datos quedan más protegidos.'
   :'En Android: abre esta página en Chrome, pulsa el menú ⋮ y elige “Instalar aplicación” (o “Añadir a pantalla de inicio”). Así se abre a pantalla completa y tus datos quedan más protegidos.';
+const plural=(u,n)=>n===1?u:(/[aeiouáéíóú]$/i.test(u)?u+'s':u+'es');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* ===== Iconos ===== */
@@ -300,12 +309,12 @@ const ic=(n,c='ic')=>`<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true"
 /* ===== Estado ===== */
 let S,view='home',ask=null,actRow=null,toastT=null,undoFn=null;
 let PR=null,deferredInstall=null,swFailed=false,lsOk=true;
-const A={num:'',type:null,date:today(),q:'',dupOk:false,text:false,rep:false,auto:true};
+const A={num:'',type:null,date:today(),q:'',dupOk:false,text:false,rep:false,auto:true,qty:1};
 const H={q:'',type:'',from:'',to:'',sort:'date-desc',open:new Set()};
 let P='mes';
 const C={y:new Date().getFullYear(),m:new Date().getMonth(),sel:today()};
 
-function mkRec(date,numb,rate,ts,demo,pm){return{id:uid(),date,num:numb,typeId:rate.id,typeName:rate.name,tenths:rate.pts,tenths0:rate.pts,rep:false,pm,cents:gainCents(rate.pts,pm),ts,demo:!!demo}}
+function mkRec(date,numb,rate,ts,demo,pm,qty=1){return{id:uid(),date,num:numb,typeId:rate.id,typeName:rate.name,tenths:rate.pts*qty,tenths0:rate.pts*qty,qty,rep:false,pm,cents:gainCents(rate.pts*qty,pm),ts,demo:!!demo}}
 function demoRecords(){
   let seed=20261102;const rnd=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296};
   const W=[0,0,0,0,0,0,0,1,1,1,1,1,2,2,3,3,4,4,5,6,6,6,7,7,8,8,9,9];
@@ -324,7 +333,7 @@ function demoRecords(){
   }
   return out;
 }
-function fresh(){return{v:1,rev:0,name:'',pm:210,goal:null,theme:'auto',rates:DEFAULT_RATES.map(r=>({...r})),records:[],lastType:null,recent:[],quick:true,lastBackup:null,hideInstall:false}}
+function fresh(){return{v:1,rev:0,name:'',pm:210,minPts:47400,goal:null,theme:'auto',rates:DEFAULT_RATES.map(r=>({...r})),records:[],lastType:null,recent:[],quick:true,lastBackup:null,hideInstall:false}}
 /* ===== Almacenamiento: IndexedDB (principal) + espejo en localStorage + copias diarias ===== */
 const DBN='mi-produccion',STO='kv';
 let idbOk=false,storagePersisted=null,storageWarn='',dbp=null,wq=Promise.resolve();
@@ -344,6 +353,8 @@ async function loadState(){
   const best=a&&b?((b.rev||0)>(a.rev||0)?b:a):(a||b);
   S=best||fresh();
   if(!S.rev)S.rev=0;
+  if(S.minPts===undefined)S.minPts=47400;
+  for(const r of S.rates)if(r.unit===undefined)r.unit=/^fri$/i.test(String(r.name).trim())?'implante':'';
   if(!idbOk&&!lsOk)storageWarn='Este navegador no deja guardar datos y lo que apuntes se perderá al cerrar. Abre la app desde Safari o Chrome normal, sin pestaña privada.';
   const needSync=(a?a.rev||0:-1)!==(b?b.rev||0:-1);
   if(best&&needSync)persist();
@@ -424,8 +435,16 @@ const tags=r=>(r.rep?'<span class="tag rp">REPETIDO</span>':'')+(r.demo?'<span c
 const ptsTxt=r=>r.rep?'no suma':pts(r.tenths)+' puntos';
 function jobLine(r,showDate){
   const meta=(showDate&&r.date!==today()?shortDate(r.date)+' · ':'')+hhmm(r.ts);
-  return `<div class="job"><div><span class="${numCls(r)}">${esc(r.num)}</span>${tags(r)}<div class="t">${esc(r.typeName)}</div></div><div class="e">${eur(r.cents)}</div><div class="w">${meta}</div><div class="p">${ptsTxt(r)}</div></div>`}
+  return `<div class="job"><div><span class="${numCls(r)}">${esc(r.num)}</span>${tags(r)}<div class="t">${esc(r.typeName)}${r.qty>1?' × '+r.qty:''}</div></div><div class="e">${eur(r.cents)}</div><div class="w">${meta}</div><div class="p">${ptsTxt(r)}</div></div>`}
 
+function minCard(tenths,mes){
+  const mn=S.minPts>0?S.minPts:0;if(!mn)return '';
+  const pc=Math.min(100,Math.floor(tenths/mn*100)),done=tenths>=mn,ext=Math.max(0,tenths-mn);
+  return `<div class="card goal" style="margin-top:12px"><div class="row2"><b style="color:var(--head)">Mínimo de ${mes}</b><span class="pct">${pc} %</span></div>
+  <div class="bar${done?' done':''}"><i style="width:${pc}%"></i></div>
+  <div class="row2"><span class="note">${pts(tenths)} de ${pts(mn)} puntos</span>${done?'':`<span class="note">Faltan ${pts(mn-tenths)}</span>`}</div>
+  ${done?`<div class="extra"><b>Mínimo superado</b><span>Puntos extra: ${pts(ext)} · ≈ ${eur(gainCents(ext,S.pm))}</span></div>`:''}</div>`;
+}
 function notices(){
   let h='';
   if(swFailed)h+='<div class="banner"><b>MODO PRUEBA</b><br>Esta página no se puede instalar y el navegador puede borrar sus datos. Para usarla de verdad, abre la dirección definitiva de la app.</div>';
@@ -461,6 +480,7 @@ function vHome(){
   <div class="mini"><div class="k">Este mes</div><div class="v">${eur(M.cents)}</div></div>
   <div class="mini"><div class="k">Trabajos de hoy</div><div class="v">${T.n}</div></div></div>
   <button class="btn" style="margin-top:14px" data-act="nav" data-v="add">${ic('plus')} AÑADIR TRABAJO</button>
+  ${minCard(M.tenths,MES[mi])}
   ${goal}
   <div class="h2"><span>Actividad reciente</span></div>
   <div class="card" style="padding:4px 16px">${rec.length?rec.map(r=>jobLine(r,true)).join(''):`<div class="empty"><b>Sin trabajos todavía</b>Pulsa Añadir trabajo para registrar el primero.</div>`}</div>`;
@@ -471,7 +491,7 @@ function vAdd(){
   const l=lastRec();
   return `<header class="top"><div><h1>Añadir trabajo</h1><p class="sub" id="lastinfo">${l?`Último trabajo: ${esc(l.num)} · ${eur(l.cents)}`:'Aún no has guardado ningún trabajo'}</p></div></header>
   <section class="card datebar" id="datebar"><label class="lbl" for="adate">Día del trabajo</label>
-  <div class="dsel"><button class="calnav" id="dprev" data-act="dprev" aria-label="Día anterior">${ic('left')}</button><input id="adate" class="in" type="date" value="${A.date}" max="${today()}"><button class="calnav" id="dnext" data-act="dnext" aria-label="Día siguiente">${ic('right')}</button></div>
+  <div class="dsel"><button class="calnav" id="dprev" data-act="dprev" aria-label="Día anterior">${ic('left')}</button><input id="adate" class="in" type="date" value="${A.date}"><button class="calnav" id="dnext" data-act="dnext" aria-label="Día siguiente">${ic('right')}</button></div>
   <div class="dayinfo"><span id="dayinfo"></span><button class="dtoday" id="dtoday" data-act="dtoday" hidden>Volver a hoy</button></div></section>
   <section class="card" style="margin-top:12px"><label class="lbl" for="num">Número de trabajo</label>
   <div class="numwrap"><input id="num" class="in" type="text" inputmode="decimal" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="15363" value="${esc(A.num)}"><button class="kb" id="kb" data-act="kb" aria-label="Cambiar teclado">${A.text?'ABC':'123'}</button></div>
@@ -484,14 +504,14 @@ function vAdd(){
   <div class="grid2" id="grid"></div>
   <div class="h2"><span>Opciones</span></div>
   <section class="card"><div class="line"><div><b style="color:var(--head)">Guardado rápido</b><div class="note">Tras guardar, sigo aquí para el siguiente</div></div><button class="sw" id="quick" data-act="quick" aria-pressed="${S.quick}" aria-label="Guardado rápido"></button></div></section>
-  <section class="savebar"><div class="res"><div><div class="k">Puntos</div><div class="v" id="r-pts">—</div></div><div><div class="k">Valor punto</div><div class="v" id="r-pm">${pmFmt(S.pm)}</div></div><div class="g"><div class="k">Ganancia</div><div class="v" id="r-gain">—</div></div></div>
+  <section class="savebar"><div class="qty" id="qty" hidden><span class="ql" id="qlbl"></span><div class="stepper"><button data-act="qminus" aria-label="Menos">−</button><b id="qval">1</b><button data-act="qplus" aria-label="Más">+</button></div></div><div class="res"><div><div class="k">Puntos</div><div class="v" id="r-pts">—</div></div><div><div class="k">Valor punto</div><div class="v" id="r-pm">${pmFmt(S.pm)}</div></div><div class="g"><div class="k">Ganancia</div><div class="v" id="r-gain">—</div></div></div>
   <div class="dnote" id="dnote" hidden></div>
   <div class="err" id="err" hidden></div>
   <button class="btn" id="save" data-act="save">GUARDAR TRABAJO</button></section>`;
 }
 function drawGrid(){
   const q=norm(A.q.trim()),rs=activeRates().filter(r=>!q||norm(r.name).includes(q));
-  $('#grid').innerHTML=rs.length?rs.map(r=>`<button class="tcard${A.type===r.id?' sel':''}" data-act="pick" data-id="${r.id}" aria-pressed="${A.type===r.id}"><b>${esc(r.name)}</b><span>${pts(r.pts)} puntos · ${eur(gainCents(r.pts,S.pm))}</span></button>`).join(''):`<div class="empty" style="grid-column:1/-1">Ningún trabajo coincide con “${esc(A.q)}”.</div>`;
+  $('#grid').innerHTML=rs.length?rs.map(r=>`<button class="tcard${A.type===r.id?' sel':''}" data-act="pick" data-id="${r.id}" aria-pressed="${A.type===r.id}"><b>${esc(r.name)}</b><span>${pts(r.pts)} puntos${r.unit?' por '+esc(r.unit):''} · ${eur(gainCents(r.pts,S.pm))}</span></button>`).join(''):`<div class="empty" style="grid-column:1/-1">Ningún trabajo coincide con “${esc(A.q)}”.</div>`;
   const rc=S.recent.map(rateById).filter(r=>r&&r.active);
   $('#recent').innerHTML=rc.length?`<div class="note" style="margin:0 4px 6px">Recientes</div><div class="chips">${rc.map(r=>`<button class="chip" data-act="pick" data-id="${r.id}">${esc(r.name)}</button>`).join('')}</div>`:'';
 }
@@ -502,14 +522,16 @@ function dupInfo(){
 }
 function updateAdd(){
   const isT=A.date===today(),da=agg(inRange(A.date,A.date));
-  $('#adate').value=A.date;$('#dnext').disabled=isT;$('#dtoday').hidden=isT;$('#datebar').classList.toggle('past',!isT);
+  $('#adate').value=A.date;$('#dtoday').hidden=isT;$('#datebar').classList.toggle('past',!isT);
   $('#dayinfo').textContent=(isT?'Hoy':cap(longDay(A.date)))+(da.n?` · ${da.n} trabajo${da.n===1?'':'s'} · ${eur(da.cents)}`:' · sin trabajos todavía');
-  const dn=$('#dnote');dn.hidden=isT;dn.textContent='Se guardará el '+shortDate(A.date)+', no hoy';
-  const r=rateById(A.type),sf=sfxOf(A.num);
+  const dn=$('#dnote');dn.hidden=isT;dn.textContent='Se guardará el '+shortDate(A.date)+(A.date>today()?' (un día que aún no ha llegado)':', no hoy');
+  const r=rateById(A.type),sf=sfxOf(A.num),uq=r&&r.unit?A.qty:1,tt=r?r.pts*uq:0;
+  const qb=$('#qty');qb.hidden=!(r&&r.unit);
+  if(r&&r.unit){$('#qlbl').innerHTML=esc(cap(plural(r.unit,2)))+'<br><span class="note">'+pts(r.pts)+' puntos cada uno</span>';$('#qval').textContent=A.qty}
   $('#sfx-I').classList.toggle('on',sf==='I');$('#sfx-S').classList.toggle('on',sf==='S');
-  $('#r-pts').textContent=r?(A.rep?'0':pts(r.pts)):'—';
+  $('#r-pts').textContent=r?(A.rep?'0':pts(tt)):'—';
   $('#r-pm').textContent=pmFmt(S.pm);
-  $('#r-gain').textContent=r?(A.rep?eur(0):eur(gainCents(r.pts,S.pm))):'—';
+  $('#r-gain').textContent=r?(A.rep?eur(0):eur(gainCents(tt,S.pm))):'—';
   const d=dupInfo(),box=$('#dup');
   if(d){
     box.hidden=false;
@@ -532,13 +554,12 @@ function saveJob(){
   const r=rateById(A.type);
   if(!r){showErr('Elige el tipo de trabajo.');return}
   if(!A.date)A.date=today();
-  if(A.date>today()){showErr('La fecha no puede ser futura.');return}
   const d=dupInfo();
   if(d&&d.exact&&!A.rep&&!A.dupOk){A.dupOk=true;showErr('');updateAdd();return}
-  const rec=mkRec(A.date,n,r,Date.now(),false,S.pm);
+  const rec=mkRec(A.date,n,r,Date.now(),false,S.pm,r.unit?A.qty:1);
   if(A.rep){rec.rep=true;rec.tenths=0;rec.cents=0}
   S.records.push(rec);S.lastType=r.id;S.recent=[r.id,...S.recent.filter(x=>x!==r.id)].slice(0,3);persist();
-  const wasRep=A.rep;A.num='';A.dupOk=false;A.rep=false;showErr('');
+  const wasRep=A.rep;A.num='';A.dupOk=false;A.rep=false;A.qty=1;showErr('');
   toast((wasRep?`Repetido guardado · ${n}`:`Guardado · ${n} · ${eur(rec.cents)}`)+(rec.date!==today()?` · ${shortDate(rec.date)}`:''),()=>{S.records=S.records.filter(x=>x.id!==rec.id);persist();render()});
   if(S.quick){const i=$('#num');i.value='';const rb=$('#rep');rb.classList.remove('on');rb.setAttribute('aria-pressed','false');drawGrid();updateAdd();$('#lastinfo').textContent=`Último trabajo: ${n} · ${eur(rec.cents)}`;i.focus()}
   else go('home');
@@ -576,7 +597,7 @@ function drawHist(){
     h+=`<button class="dayh" data-act="toggleDay" data-d="${k}" aria-expanded="${open}"><span class="d">${esc(longDay(k).toUpperCase())}</span><span class="s">${a.n} trabajo${a.n===1?'':'s'} · ${pts(a.tenths)} puntos${a.rep?` · ${a.rep} repetido${a.rep===1?'':'s'}`:''}</span><span class="m">${eur(a.cents)}${ic(open?'up':'down')}</span></button>`;
     if(open){
       h+=`<div class="daybody">`+rs2.map(r=>{
-        let x=`<button class="job" data-act="rowtap" data-id="${r.id}" style="background:none"><div><span class="${numCls(r)}">${esc(r.num)}</span>${tags(r)}<div class="t">${esc(r.typeName)}</div></div><div class="e">${eur(r.cents)}</div><div class="w">${hhmm(r.ts)}</div><div class="p">${ptsTxt(r)}</div></button>`;
+        let x=`<button class="job" data-act="rowtap" data-id="${r.id}" style="background:none"><div><span class="${numCls(r)}">${esc(r.num)}</span>${tags(r)}<div class="t">${esc(r.typeName)}${r.qty>1?' × '+r.qty:''}</div></div><div class="e">${eur(r.cents)}</div><div class="w">${hhmm(r.ts)}</div><div class="p">${ptsTxt(r)}</div></button>`;
         if(actRow===r.id){
           if(ask==='del:'+r.id)x+=`<div class="confirm">¿Eliminar el trabajo ${esc(r.num)} (${eur(r.cents)})?<div class="acts"><button class="del" data-act="delok" data-id="${r.id}">Eliminar</button><button data-act="askno">Cancelar</button></div></div>`;
           else x+=`<div class="acts"><button data-act="dup" data-id="${r.id}">${ic('copy')}Duplicar</button><button data-act="edit" data-id="${r.id}">${ic('pen')}Editar</button><button class="del" data-act="ask" data-k="del:${r.id}">${ic('trash')}Eliminar</button></div>`;
@@ -593,6 +614,7 @@ function openEdit(id){
   $('#sheetwrap').innerHTML=`<div class="ov" data-act="closeSheet"><div class="sheet" role="dialog" aria-label="Editar trabajo"><h2>Editar trabajo</h2>
   <div><label class="lbl" for="e-num">Número</label><input id="e-num" class="in" value="${esc(r.num)}" autocomplete="off"></div>
   <div><label class="lbl" for="e-type">Tipo de trabajo</label><select id="e-type" class="in s">${opts}</select><div class="note" style="margin-top:6px">Si no cambias el tipo, se mantienen los puntos y el valor con los que se guardó.</div></div>
+  <div id="e-qtywrap"${(rateById(r.typeId)&&rateById(r.typeId).unit)?'':' hidden'}><label class="lbl" for="e-qty">Cantidad</label><input id="e-qty" class="in s" type="number" inputmode="numeric" min="1" max="99" value="${r.qty||1}"></div>
   <div><label class="lbl" for="e-date">Fecha</label><input id="e-date" class="in" type="date" value="${r.date}"></div>
   <button class="rep${r.rep?' on':''}" id="e-rep" data-act="erep" aria-pressed="${!!r.rep}"><span class="box">${ic('check','')}</span><span><b>Repetido</b><span class="d">No suma puntos ni euros</span></span></button>
   <div class="err" id="e-err" hidden></div>
@@ -639,6 +661,7 @@ function vStats(){
   if(P==='año')P='anio';
   let h=`<header class="top"><div><h1>Estadísticas</h1><p class="sub">${esc(({hoy:'Hoy',semana:'Esta semana',mes:cap(MES[now.getMonth()]),anio:String(now.getFullYear())})[P])}</p></div></header>${demoBanner()}
   <div class="seg" role="tablist">${tabs.map(([k,l])=>`<button class="${P===k?'on':''}" data-act="period" data-p="${k}">${l}</button>`).join('')}</div>`;
+  if(P==='mes')h+=minCard(g.tenths,MES[now.getMonth()]);
   if(!rs.length)h+=`<div class="card empty" style="margin-top:12px"><b>Sin trabajos en este periodo</b>Cuando registres alguno, verás aquí los totales y los gráficos.</div>`;
   else{
     const ty=byType(rs),freq=[...ty].sort((x,y)=>y.n-x.n)[0],top=[...ty].sort((x,y)=>y.cents-x.cents)[0];
@@ -676,18 +699,18 @@ function drawCal(){
   c+='</div>';
   const sd=agg(inRange(C.sel,C.sel));
   c+=`<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)"><b style="color:var(--head)">${esc(cap(longDay(C.sel)))}</b>`+(sd.n||sd.rep?`<div class="tiles" style="grid-template-columns:repeat(3,1fr);margin-top:8px"><div class="mini" style="background:var(--bg);box-shadow:none"><div class="k">Trabajos</div><div class="v">${sd.n}</div></div><div class="mini" style="background:var(--bg);box-shadow:none"><div class="k">Puntos</div><div class="v">${pts(sd.tenths)}</div></div><div class="mini" style="background:var(--bg);box-shadow:none"><div class="k">Ganado</div><div class="v">${eur(sd.cents)}</div></div></div><button class="btn ghost" style="margin-top:10px" data-act="calhist">Ver este día en el historial</button>`:`<div class="note" style="margin-top:6px">Sin trabajos registrados este día.</div>`)+`</div>`;
-  c=c.replace(/<\/div>$/,'')+(C.sel<=today()?'<button class="btn sm" style="margin-top:10px" data-act="calAdd">+ Añadir trabajo a este día</button>':'')+'</div>';
+  c=c.replace(/<\/div>$/,'')+'<button class="btn sm" style="margin-top:10px" data-act="calAdd">+ Añadir trabajo a este día</button>'+'</div>';
   $('#cal').innerHTML=c;
   const M=agg(inRange(...monthRange(k))),pd=new Date(C.y,C.m-1,1),PM=agg(inRange(...monthRange(monthKey(pd.getFullYear(),pd.getMonth())))),diff=M.cents-PM.cents;
   $('#calsum').innerHTML=`<div class="h2"><span>Resumen de ${MES[C.m]} ${C.y}</span></div><div class="tiles" style="margin-top:0"><div class="tile"><div class="k">Trabajos</div><div class="v">${M.n}</div></div><div class="tile"><div class="k">Puntos</div><div class="v">${pts(M.tenths)}</div></div>
   <div class="tile"><div class="k">Ganado</div><div class="v o">${eur(M.cents)}</div></div><div class="tile"><div class="k">Días con producción</div><div class="v">${M.days}</div></div>
   <div class="tile"><div class="k">Media por día trabajado</div><div class="v">${M.days?eur(Math.round(M.cents/M.days)):'—'}</div></div>
-  <div class="tile"><div class="k">Frente a ${MES[pd.getMonth()]}</div><div class="v">${PM.n||M.n?(diff>=0?'+':'')+eur(diff):'—'}</div></div></div>`;
+  <div class="tile"><div class="k">Frente a ${MES[pd.getMonth()]}</div><div class="v">${PM.n||M.n?(diff>=0?'+':'')+eur(diff):'—'}</div></div></div>${minCard(M.tenths,MES[C.m])}`;
 }
 
 /* --- Ajustes --- */
 function vSet(){
-  const rates=S.rates.map((r,i)=>`<div class="rate"><input class="in s r-name" data-id="${r.id}" value="${esc(r.name)}" aria-label="Nombre del trabajo">
+  const rates=S.rates.map((r,i)=>`<div class="rate"><input class="in s r-name" data-id="${r.id}" value="${esc(r.name)}" aria-label="Nombre del trabajo"><input class="in s r-unit" data-id="${r.id}" value="${esc(r.unit||'')}" placeholder="Se cuenta por… (ej. implante)" aria-label="Se cuenta por unidad">
   <div class="r2"><input class="in s r-pts" data-id="${r.id}" inputmode="decimal" value="${String(r.pts/10).replace('.',',')}" aria-label="Puntos"><label>puntos</label>
   <button class="mv" data-act="mv" data-id="${r.id}" data-d="-1" ${i===0?'disabled':''} aria-label="Subir">${ic('up')}</button><button class="mv" data-act="mv" data-id="${r.id}" data-d="1" ${i===S.rates.length-1?'disabled':''} aria-label="Bajar">${ic('down')}</button>
   <button class="sw" data-act="toggleRate" data-id="${r.id}" aria-pressed="${r.active}" aria-label="Activar o desactivar"></button></div></div>`).join('');
@@ -695,6 +718,7 @@ function vSet(){
   <section class="card"><div class="setrow"><label class="lbl" for="s-name">Nombre</label><input id="s-name" class="in s" value="${esc(S.name)}" placeholder="Cómo quieres que te salude" autocomplete="off"></div>
   <div class="setrow"><label class="lbl" for="s-pm">Valor del punto (€)</label><input id="s-pm" class="in s" inputmode="decimal" value="${String(S.pm/1000).replace('.',',')}"><div class="note" style="margin-top:6px">Al cambiarlo solo afecta a los trabajos nuevos. Los ya guardados mantienen el valor con el que se registraron.</div></div>
   <div class="setrow"><label class="lbl" for="s-goal">Objetivo mensual (€, opcional)</label><input id="s-goal" class="in s" inputmode="decimal" value="${S.goal?String(S.goal/100).replace('.',','):''}" placeholder="Sin objetivo"></div>
+  <div class="setrow"><label class="lbl" for="s-min">Puntos mínimos al mes</label><input id="s-min" class="in s" inputmode="decimal" value="${S.minPts?String(S.minPts/10).replace('.',','):''}" placeholder="Sin mínimo"><div class="note" style="margin-top:6px">A partir de estos puntos empieza el extra.</div></div>
   <div class="setrow"><span class="lbl">Tema</span><div class="seg three">${[['light','Claro'],['dark','Oscuro'],['auto','Automático']].map(([k,l])=>`<button class="${S.theme===k?'on':''}" data-act="theme" data-t="${k}">${l}</button>`).join('')}</div></div></section>
   <div class="h2"><span>Tarifas</span></div><section class="card" style="padding-top:4px">${rates}</section>
   <section class="card" style="margin-top:10px"><label class="lbl" for="n-name">Añadir trabajo nuevo</label><input id="n-name" class="in s" placeholder="Nombre del trabajo" autocomplete="off" style="margin-bottom:8px"><div class="r2" style="display:flex;gap:8px"><input id="n-pts" class="in s" inputmode="decimal" placeholder="Puntos" style="flex:1"><button class="btn sm" style="flex:1" data-act="addRate">Añadir</button></div><div class="err" id="n-err" hidden style="margin:8px 0 0"></div>
@@ -758,7 +782,7 @@ const ACT={
   ask:el=>{ask=el.dataset.k;render()},
   undo:()=>{const f=undoFn;undoFn=null;$('#toast').classList.remove('on');f&&f()},
   kb:()=>{A.text=!A.text;const n=$('#num');n.inputMode=A.text?'text':'decimal';$('#kb').textContent=A.text?'ABC':'123';n.blur();n.focus()},
-  pick:el=>{A.type=el.dataset.id;A.dupOk=false;showErr('');drawGrid();updateAdd();$('#save').scrollIntoView({block:'nearest'})},
+  pick:el=>{if(A.type!==el.dataset.id)A.qty=1;A.type=el.dataset.id;A.dupOk=false;showErr('');drawGrid();updateAdd();$('#save').scrollIntoView({block:'nearest'})},
   quick:()=>{S.quick=!S.quick;persist();$('#quick').setAttribute('aria-pressed',S.quick)},
   save:()=>saveJob(),
   toggleDay:el=>{const d=el.dataset.d;H.open.has(d)?H.open.delete(d):H.open.add(d);drawHist()},
@@ -772,7 +796,9 @@ const ACT={
     const r=S.records.find(x=>x.id===el.dataset.id),n=normNum($('#e-num').value.replace(',','.')),t=$('#e-type').value,d=$('#e-date').value;
     if(!n||!d){const e=$('#e-err');e.hidden=false;e.textContent=!n?'Escribe el número del trabajo.':'Elige una fecha.';return}
     const rep=$('#e-rep').classList.contains('on');
-    if(t!==r.typeId){const ra=rateById(t);r.typeId=t;r.typeName=ra.name;r.tenths0=ra.pts;r.pm=S.pm}
+    const ra=rateById(t),q=ra&&ra.unit?Math.max(1,Math.min(99,parseInt($('#e-qty').value,10)||1)):1;
+    if(t!==r.typeId){r.typeId=t;r.typeName=ra.name;r.pm=S.pm;r.tenths0=ra.pts*q;r.qty=q}
+    else if(q!==(r.qty||1)){r.tenths0=Math.round((r.tenths0!=null?r.tenths0:r.tenths)/(r.qty||1))*q;r.qty=q}
     const t0=r.tenths0!=null?r.tenths0:r.tenths;
     r.rep=rep;r.tenths=rep?0:t0;r.cents=rep?0:gainCents(t0,r.pm);
     r.num=n;r.date=d;persist();$('#sheetwrap').innerHTML='';H.open.add(d);drawHist();toast('Cambios guardados');
@@ -791,9 +817,11 @@ const ACT={
   },
   theme:el=>{S.theme=el.dataset.t;applyTheme();persist();render()},
   dprev:()=>{A.date=addDays(A.date,-1);A.auto=false;A.dupOk=false;updateAdd()},
-  dnext:()=>{if(A.date<today()){A.date=addDays(A.date,1);A.auto=A.date===today();A.dupOk=false;updateAdd()}},
+  dnext:()=>{A.date=addDays(A.date,1);A.auto=A.date===today();A.dupOk=false;updateAdd()},
   dtoday:()=>{A.date=today();A.auto=true;A.dupOk=false;updateAdd()},
   calAdd:()=>{A.date=C.sel;A.auto=C.sel===today();A.dupOk=false;go('add')},
+  qminus:()=>{A.qty=Math.max(1,A.qty-1);updateAdd()},
+  qplus:()=>{A.qty=Math.min(99,A.qty+1);updateAdd()},
   backup:async()=>{
     const ok=await saveFile(`mi-produccion-copia-${today()}.json`,JSON.stringify({app:'mi-produccion',version:1,exportedAt:new Date().toISOString(),state:S}),'application/json');
     if(ok){S.lastBackup=Date.now();persist();if(view==='set'||view==='home')render();toast('Copia guardada')}
@@ -821,14 +849,17 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const t=e.target,id=t.id;
   if(id==='restore-file'){readRestoreFile(t.files[0])}
-  else if(id==='adate'){A.date=(t.value&&t.value<=today())?t.value:today();A.auto=A.date===today();A.dupOk=false;updateAdd()}
+  else if(id==='e-type'){const ra=rateById(t.value);$('#e-qtywrap').hidden=!(ra&&ra.unit)}
+  else if(id==='adate'){A.date=t.value||today();A.auto=A.date===today();A.dupOk=false;updateAdd()}
   else if(id==='h-type'){H.type=t.value;drawHist()}
   else if(id==='h-from'){H.from=t.value;drawHist()}
   else if(id==='h-to'){H.to=t.value;drawHist()}
   else if(id==='h-sort'){H.sort=t.value;drawHist()}
   else if(id==='s-name'){S.name=t.value;persist()}
   else if(id==='s-pm'){const v=num(t.value);if(v>0){S.pm=Math.round(v*1000);persist();toast('Valor del punto actualizado')}t.value=String(S.pm/1000).replace('.',',')}
+  else if(id==='s-min'){const v=num(t.value);S.minPts=v>0?Math.round(v*10):0;persist();toast(S.minPts?'Mínimo guardado':'Mínimo quitado')}
   else if(id==='s-goal'){const v=num(t.value);S.goal=v>0?Math.round(v*100):null;persist();toast(S.goal?'Objetivo guardado':'Objetivo quitado')}
+  else if(t.classList.contains('r-unit')){const r=rateById(t.dataset.id);r.unit=t.value.trim().toLowerCase();persist();toast(r.unit?'Se contará por '+r.unit:'Sin cantidad por unidad')}
   else if(t.classList.contains('r-name')){const r=rateById(t.dataset.id);if(t.value.trim()){r.name=t.value.trim();persist()}else t.value=r.name}
   else if(t.classList.contains('r-pts')){const r=rateById(t.dataset.id),v=num(t.value);if(v>0){r.pts=Math.round(v*10);persist();toast('Puntos actualizados')}t.value=String(r.pts/10).replace('.',',')}
 });

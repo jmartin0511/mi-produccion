@@ -1,7 +1,7 @@
 /* Service worker de Mi Producción.
    Guarda la app para que abra sin conexión. Los datos del usuario NO están aquí:
    viven en IndexedDB del navegador, así que actualizar la app nunca los toca. */
-const CACHE = 'mi-produccion-v1.1';
+const CACHE = 'mi-produccion-v1.2';
 const ASSETS = [
   './',
   'index.html',
@@ -12,8 +12,16 @@ const ASSETS = [
   'icons/apple-touch-icon.png'
 ];
 
+/* Al instalar, pide siempre la versión más nueva al servidor (sin usar la caché
+   del navegador), para que una actualización no se quede con archivos viejos. */
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(c => Promise.all(ASSETS.map(u =>
+        fetch(new Request(u, { cache: 'reload' })).then(r => { if (!r.ok) throw new Error(u); return c.put(u, r); })
+      )))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', e => {
@@ -24,8 +32,7 @@ self.addEventListener('activate', e => {
   );
 });
 
-/* Responde al instante desde la copia guardada y la renueva en segundo plano.
-   La versión nueva se ve la siguiente vez que se abre la app. */
+/* Responde al instante desde la copia guardada y la renueva en segundo plano. */
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
@@ -33,7 +40,7 @@ self.addEventListener('fetch', e => {
     const cache = await caches.open(CACHE);
     const hit = (await cache.match(req, { ignoreSearch: true })) ||
                 (req.mode === 'navigate' ? await cache.match('index.html') : undefined);
-    const net = fetch(req).then(res => {
+    const net = fetch(new Request(req.url, { cache: 'no-cache' })).then(res => {
       if (res && res.ok) cache.put(req, res.clone());
       return res;
     }).catch(() => null);
